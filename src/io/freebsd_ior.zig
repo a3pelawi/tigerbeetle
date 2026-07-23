@@ -342,44 +342,19 @@ pub const IO = struct {
             self.io_inflight += submitted;
         }
 
-        // 3. Collect completions
-        var cqes: [*]ior.Cqe = undefined;
-        const count = ior.ior_peek_batch_cqe(self.ctx, &cqes, 256);
-        if (count > 0) {
-            for (0..count) |i| {
-                const cqe = &cqes[i];
-                const completion: *Completion = @ptrCast(@alignCast(
-                    ior.ior_cqe_get_data(self.ctx, cqe).?,
-                ));
-                const res = ior.ior_cqe_get_res(self.ctx, cqe);
-                self.commit_completion(completion, res);
-                self.io_inflight -= 1;
-            }
-            ior.ior_cq_advance(self.ctx, count);
-        } else if (self.io_inflight > 0 or self.completed.empty()) {
-            // Wait for at least one completion
-            if (submitted == 0) {
-                const rc = ior.ior_submit_and_wait(self.ctx, 1);
-                if (rc < 0) {
-                    log.err("ior_submit_and_wait failed: {}", .{rc});
-                    return error.SystemResources;
-                }
-            }
+        // 3. Collect completions via peek (avoids opaque pointer arithmetic).
+        while (true) {
+            var cqe: *ior.Cqe = undefined;
+            const rc = ior.ior_peek_cqe(self.ctx, &cqe);
+            if (rc != 0) break;
 
-            // Try batch again after wait
-            const count2 = ior.ior_peek_batch_cqe(self.ctx, &cqes, 256);
-            if (count2 > 0) {
-                for (0..count2) |i| {
-                    const cqe = &cqes[i];
-                    const completion: *Completion = @ptrCast(@alignCast(
-                        ior.ior_cqe_get_data(self.ctx, cqe).?,
-                    ));
-                    const res = ior.ior_cqe_get_res(self.ctx, cqe);
-                    self.commit_completion(completion, res);
-                    self.io_inflight -= 1;
-                }
-                ior.ior_cq_advance(self.ctx, count2);
-            }
+            const completion: *Completion = @ptrCast(@alignCast(
+                ior.ior_cqe_get_data(self.ctx, cqe).?,
+            ));
+            const res = ior.ior_cqe_get_res(self.ctx, cqe);
+            ior.ior_cqe_seen(self.ctx, cqe);
+            self.commit_completion(completion, res);
+            self.io_inflight -= 1;
         }
 
         // 4. Drain completion callbacks
@@ -427,14 +402,13 @@ pub const IO = struct {
                 },
                 .close => |op| {
                     // Close is synchronous - complete immediately
-                    const result: CloseError!void = switch (posix.errno(posix.system.close(op.fd))) {
+                    completion.result = .{ .close = switch (posix.errno(posix.system.close(op.fd))) {
                         .SUCCESS => {},
                         .BADF => error.FileDescriptorInvalid,
                         .INTR => {},
                         .IO => error.InputOutput,
                         else => |errno| stdx.unexpected_errno("close", errno),
-                    };
-                    completion.result = result;
+                    } };
                     self.completed.push(completion);
                     continue;
                 },
