@@ -4,7 +4,8 @@
 #
 # Usage: make -f Makefile.freebsd <target>
 
-ZIG ?= zig
+# Auto-detect: prefer zig014 for API compatibility, fall back to zig
+ZIG := $(or $(shell command -v zig014 2>/dev/null),$(shell command -v zig 2>/dev/null))
 TARGET ?= x86_64-freebsd
 MODE  ?= ReleaseSafe
 
