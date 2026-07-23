@@ -771,9 +771,11 @@ fn build_tigerbeetle_executable(b: *std.Build, options: struct {
     target: ?std.Build.ResolvedTarget,
     mode: std.builtin.OptimizeMode,
 }) *std.Build.Step.Compile {
+    // Executables need a concrete target (addExecutable requires it).
+    const target_resolved = options.target orelse b.graph.host;
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/tigerbeetle/main.zig"),
-        .target = options.target,
+        .target = target_resolved,
         .optimize = options.mode,
     });
     root_module.addImport("vsr", options.vsr_module);
@@ -803,7 +805,7 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/build_multiversion.zig"),
             // Enable aes extensions for vsr.checksum on the host.
-            .target = resolve_target(b, null) catch @panic("unsupported host"),
+            .target = b.graph.host,
         }),
     });
     build_multiversion_exe.root_module.addImport("stdx", options.stdx_module);
