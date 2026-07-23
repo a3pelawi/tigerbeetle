@@ -439,9 +439,9 @@ pub const IO = struct {
                                     op_data.dir_fd, op_data.file_path, op_data.flags, op_data.mode,
                                 );
                                 switch (posix.errno(rc)) {
-                                    .SUCCESS => return @intCast(rc),
+                                    .SUCCESS => return @as(c_int, @intCast(rc)),
                                     .INTR => continue,
-                                    .FAULT, .INVAL, .BADF => return -@intFromEnum(posix.E.INVAL),
+                                    .FAULT, .INVAL, .BADF => return @as(c_int, -@intFromEnum(posix.E.INVAL)),
                                     else => |e| return -@as(c_int, @intCast(@intFromEnum(e))),
                                 }
                             }
@@ -524,7 +524,7 @@ pub const IO = struct {
                     ) catch |err| err;
                 } else error.WouldBlock;
 
-                completion.result = result;
+                completion.result = .{ .accept = result };
                 self.completed.push(completion);
             },
             .connect => {
@@ -533,7 +533,7 @@ pub const IO = struct {
                     const op = &completion.operation.connect;
                     break :blk posix.getsockoptError(op.socket);
                 } else error.WouldBlock;
-                completion.result = result;
+                completion.result = .{ .connect = result };
                 self.completed.push(completion);
             },
             .close => {
@@ -541,13 +541,13 @@ pub const IO = struct {
             },
             .fsync => {
                 const result: FsyncError!void = if (res >= 0) {} else error.InputOutput;
-                completion.result = result;
+                completion.result = .{ .fsync = result };
                 self.completed.push(completion);
             },
             .openat => {
                 const result: OpenatError!fd_t = if (res >= 0) @intCast(res)
                 else error.FileNotFound;
-                completion.result = result;
+                completion.result = .{ .openat = result };
                 self.completed.push(completion);
             },
             .read => {
@@ -566,30 +566,30 @@ pub const IO = struct {
                     -@intFromEnum(posix.E.SPIPE) => error.Unseekable,
                     else => error.SystemResources,
                 };
-                completion.result = result;
+                completion.result = .{ .read = result };
                 self.completed.push(completion);
             },
             .recv => {
                 const result: RecvError!usize = if (res >= 0) @intCast(res)
                 else error.WouldBlock;
-                completion.result = result;
+                completion.result = .{ .recv = result };
                 self.completed.push(completion);
             },
             .send => {
                 const result: SendError!usize = if (res >= 0) @intCast(res)
                 else error.WouldBlock;
-                completion.result = result;
+                completion.result = .{ .send = result };
                 self.completed.push(completion);
             },
             .timeout => {
                 const result: TimeoutError!void = {};
-                completion.result = result;
+                completion.result = .{ .timeout = result };
                 self.completed.push(completion);
             },
             .write => {
                 const result: WriteError!usize = if (res >= 0) @intCast(res)
                 else error.InputOutput;
-                completion.result = result;
+                completion.result = .{ .write = result };
                 self.completed.push(completion);
             },
             .next_tick => unreachable,
@@ -800,15 +800,50 @@ pub const IO = struct {
         socket: socket_t,
         address: stdx.SocketAddress,
     ) void {
-        // Initiate non-blocking connect inline, then submit POLL for completion
-        posix.connect(
+        // Non-blocking connect. Use raw syscall to avoid error-set differences
+        // between platforms in Zig's posix wrapper.
+        const rc = posix.system.connect(
             socket,
             &address.to_std().any,
             address.to_std().getOsSockLen(),
-        ) catch |err| switch (err) {
-            error.WouldBlock, error.InProgress => {},
+        );
+        const err = posix.errno(rc);
+        switch (err) {
+            .SUCCESS, .INPROGRESS, .AGAIN, .ALREADY => {
+                // Connection is pending — submit POLL to wait for completion.
+                self.submit(
+                    context,
+                    callback,
+                    completion,
+                    .connect,
+                    .{ .socket = socket, .address = address.to_std(), .flags = 0 },
+                );
+            },
             else => {
-                const result: ConnectError!void = err;
+                // Connection failed — complete immediately.
+                const result: ConnectError!void = switch (err) {
+                    .ACCES => error.AccessDenied,
+                    .ADDRINUSE => error.AddressInUse,
+                    .ADDRNOTAVAIL => error.AddressNotAvailable,
+                    .AFNOSUPPORT => error.AddressFamilyNotSupported,
+                    .AGAIN => error.WouldBlock,
+                    .ALREADY => error.OpenAlreadyInProgress,
+                    .BADF => error.FileDescriptorInvalid,
+                    .CONNREFUSED => error.ConnectionRefused,
+                    .CONNRESET => error.ConnectionResetByPeer,
+                    .FAULT => unreachable,
+                    .INTR => unreachable,
+                    .ISCONN => error.AlreadyConnected,
+                    .NETUNREACH => error.NetworkUnreachable,
+                    .NOTSOCK => error.FileDescriptorNotASocket,
+                    .PERM => error.PermissionDenied,
+                    .PROTOTYPE => error.ProtocolNotSupported,
+                    .TIMEDOUT => error.ConnectionTimedOut,
+                    .HOSTUNREACH => error.HostUnreachable,
+                    .INVAL => unreachable,
+                    .NOENT => error.FileNotFound,
+                    else => |e| stdx.unexpected_errno("connect", e),
+                };
                 completion.* = .{
                     .link = .{},
                     .context = context,
@@ -826,17 +861,8 @@ pub const IO = struct {
                     .result = .{ .connect = result },
                 };
                 self.completed.push(completion);
-                return;
             },
-        };
-
-        self.submit(
-            context,
-            callback,
-            completion,
-            .connect,
-            .{ .socket = socket, .address = address.to_std(), .flags = 0 },
-        );
+        }
     }
 
     pub const FsyncError = posix.SyncError || posix.UnexpectedError;
