@@ -686,7 +686,7 @@ fn build_check(
         .name = "tigerbeetle",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tigerbeetle/main.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -728,14 +728,14 @@ fn build_tigerbeetle(
             .vsr_options = options.vsr_options,
             .llvm_objcopy = options.llvm_objcopy,
             .tigerbeetle_previous = multiversion_lazy_path,
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .mode = options.mode,
         });
     } else bin: {
         const tigerbeetle_exe = build_tigerbeetle_executable(b, .{
             .vsr_module = options.vsr_module,
             .vsr_options = options.vsr_options,
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .mode = options.mode,
         });
         if (options.emit_llvm_ir) {
@@ -842,7 +842,7 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
             build_tigerbeetle_executable(b, .{
                 .vsr_module = options.vsr_module,
                 .vsr_options = options.vsr_options,
-                .target = options.target,
+                .target = (options.target orelse b.graph.host),
                 .mode = options.mode,
             }).getEmittedBin(),
         );
@@ -880,7 +880,7 @@ fn build_aof(
         .name = "aof",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/aof.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -918,7 +918,7 @@ fn build_test(
         .name = "test-stdx",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/stdx/stdx.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
         .filters = b.args orelse &.{},
@@ -929,7 +929,7 @@ fn build_test(
         .name = "test-unit",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/unit_tests.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
         .filters = b.args orelse &.{},
@@ -961,7 +961,7 @@ fn build_test(
         .tb_client_header = options.tb_client_header,
         .llvm_objcopy = options.llvm_objcopy,
         .stdx_module = options.stdx_module,
-        .target = options.target,
+        .target = (options.target orelse b.graph.host),
         .mode = options.mode,
         .vsr_module_test = options.vsr_module_test,
         .vsr_options_test = options.vsr_options_test,
@@ -1000,7 +1000,7 @@ fn build_test_integration(
 ) void {
     const vortex = build_vortex_executable(b, .{
         .stdx_module = options.stdx_module,
-        .target = options.target,
+        .target = (options.target orelse b.graph.host),
         .mode = options.mode,
         .vsr_module_test = options.vsr_module_test,
         .vsr_options_test = options.vsr_options_test,
@@ -1015,7 +1015,7 @@ fn build_test_integration(
         .name = "test-integration",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/integration_tests.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
         .filters = b.args orelse &.{},
@@ -1061,7 +1061,7 @@ fn build_test_jni(
     const tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/clients/java/src/jni_tests.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             // TODO(zig): The function `JNI_CreateJavaVM` tries to detect
             // the stack size and causes a SEGV that is handled by Zig's panic handler.
             // https://bugzilla.redhat.com/show_bug.cgi?id=1572811#c7
@@ -1133,7 +1133,7 @@ fn build_vopr(
         .name = "vopr",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/vopr.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             // When running without a SEED, default to release.
             .optimize = if (b.args == null) .ReleaseSafe else options.mode,
         }),
@@ -1169,7 +1169,7 @@ fn build_fuzz(
         .name = "fuzz",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/fuzz_tests.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -1200,7 +1200,7 @@ fn build_scripts(
         .name = "scripts",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/scripts.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = .Debug,
         }),
     });
@@ -1235,7 +1235,7 @@ fn build_vortex(
     },
 ) void {
     const vortex = build_vortex_executable(b, .{
-        .target = options.target,
+        .target = (options.target orelse b.graph.host),
         .mode = options.mode,
         .stdx_module = options.stdx_module,
         .vsr_module_test = options.vsr_module_test,
@@ -1267,7 +1267,7 @@ fn build_vortex_executable(
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/vortex.zig"),
             .omit_frame_pointer = false,
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -1384,7 +1384,7 @@ fn build_vortex_driver_zig(
         .linkage = .static,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tigerbeetle/libtb_client.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -1403,7 +1403,7 @@ fn build_vortex_driver_zig(
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/testing/vortex/zig_driver.zig"),
             .omit_frame_pointer = false,
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -2084,7 +2084,7 @@ fn build_clients_c_sample(
         .linkage = .static,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tigerbeetle/libtb_client.zig"),
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
@@ -2098,7 +2098,7 @@ fn build_clients_c_sample(
     const sample = b.addExecutable(.{
         .name = "c_sample",
         .root_module = b.createModule(.{
-            .target = options.target,
+            .target = (options.target orelse b.graph.host),
             .optimize = options.mode,
         }),
     });
