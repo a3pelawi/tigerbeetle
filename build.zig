@@ -2525,7 +2525,7 @@ fn fetch_objcopy(b: *std.Build) std.Build.LazyPath {
             // FreeBSD ships llvm-objcopy in base system (since FreeBSD 12+).
             const objcopy_path = b.findProgram(&.{"llvm-objcopy"}, &.{}) catch
                 @panic("install llvm-objcopy: pkg install llvm");
-            return LazyPath{ .cwd_relative = objcopy_path };
+            return std.Build.LazyPath{ .cwd_relative = objcopy_path };
         },
         else => @panic("unsupported host"),
     }
