@@ -54,21 +54,25 @@ fn resolve_target(b: *std.Build, target_requested: ?[]const u8) !std.Build.Resol
     return b.resolveTargetQuery(query);
 }
 
-const zig_version = std.SemanticVersion{
+const zig_version_min = std.SemanticVersion{
     .major = 0,
     .minor = 14,
-    .patch = 1,
+    .patch = 0,
+};
+const zig_version_max = std.SemanticVersion{
+    .major = 0,
+    .minor = 14,
+    .patch = 99,
 };
 
 comptime {
-    const zig_version_equal =
-        zig_version.major == builtin.zig_version.major and
-        zig_version.minor == builtin.zig_version.minor and
-        zig_version.patch == builtin.zig_version.patch;
-    if (!zig_version_equal) {
+    const version_ok =
+        zig_version_min.order(builtin.zig_version) != .gt and
+        zig_version_max.order(builtin.zig_version) != .lt;
+    if (!version_ok) {
         @compileError(std.fmt.comptimePrint(
-            "unsupported zig version: expected {}, found {}",
-            .{ zig_version, builtin.zig_version },
+            "unsupported zig version: expected {} to {}, found {}",
+            .{ zig_version_min, zig_version_max, builtin.zig_version },
         ));
     }
 }
