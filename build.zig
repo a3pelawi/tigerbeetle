@@ -218,7 +218,10 @@ pub fn build(b: *std.Build) !void {
     });
 
     var releases_previous = release_history(b);
-    const tigerbeetle_test_previous = fetch_release(b, releases_previous.next().?, target, mode);
+    const tigerbeetle_test_previous = if (releases_previous.next()) |tag|
+        fetch_release(b, tag, target, mode)
+    else
+        null;
     const tigerbeetle_test = build_tigerbeetle_executable_multiversion(b, .{
         .stdx_module = stdx_module,
         .vsr_module = vsr_module_test,
@@ -778,7 +781,7 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
     vsr_module: *std.Build.Module,
     vsr_options: *std.Build.Step.Options,
     llvm_objcopy: ?[]const u8,
-    tigerbeetle_previous: std.Build.LazyPath,
+    tigerbeetle_previous: ?std.Build.LazyPath,
     target: std.Build.ResolvedTarget,
     mode: std.builtin.OptimizeMode,
 }) std.Build.LazyPath {
@@ -835,7 +838,9 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
         build_multiversion.addArg("--debug");
     }
 
-    build_multiversion.addPrefixedFileArg("--tigerbeetle-past=", options.tigerbeetle_previous);
+    if (options.tigerbeetle_previous) |previous| {
+        build_multiversion.addPrefixedFileArg("--tigerbeetle-past=", previous);
+    }
     build_multiversion.addArg(b.fmt(
         "--tmp={s}",
         .{b.cache_root.join(b.allocator, &.{"tmp"}) catch @panic("OOM")},
@@ -1328,7 +1333,8 @@ fn build_vortex_options(
 }
 
 fn release_history(b: *std.Build) std.mem.SplitIterator(u8, .scalar) {
-    const tags_string = b.run(&.{
+    var code: u8 = undefined;
+    const tags_string = b.runAllowFail(&.{
         "git",      "tag",
         // Only list ancestors of the current commit.
         // Use "HEAD^" instead of "HEAD" so that if our current commit is a release commit, we don't
@@ -1336,7 +1342,11 @@ fn release_history(b: *std.Build) std.mem.SplitIterator(u8, .scalar) {
         "--merged", "HEAD^",
         "--sort=-committerdate", // Sort from newest to oldest.
         "--list", "[0-9]*.[0-9]*.[0-9]*", // NB: This is not anchored (^$).
-    });
+    }, &code, .Inherit) catch {
+        // Shallow clone or detached HEAD — "HEAD^" may not exist.
+        // Return empty iterator; upstream callers handle this.
+        return std.mem.splitScalar(u8, "", '\n');
+    };
     return std.mem.splitScalar(u8, tags_string, '\n');
 }
 
