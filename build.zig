@@ -19,39 +19,47 @@ const release_client_min = "0.16.4";
 
 // TigerBeetle binary requires certain CPU feature and supports a closed set of CPUs. Here, we
 // specify exactly which features the binary needs.
-fn resolve_target(b: *std.Build, target_requested: ?[]const u8) !std.Build.ResolvedTarget {
-    const target_host = @tagName(builtin.target.cpu.arch) ++ "-" ++ @tagName(builtin.target.os.tag);
-    const target = target_requested orelse target_host;
-    const triples = .{
-        "aarch64-freebsd",
-        "aarch64-linux",
-        "aarch64-macos",
-        "x86_64-freebsd",
-        "x86_64-linux",
-        "x86_64-macos",
-        "x86_64-windows",
-    };
-    const cpus = .{
-        "baseline+aes+neon",
-        "baseline+aes+neon",
-        "baseline+aes+neon",
-        "x86_64_v3+aes",
-        "x86_64_v3+aes",
-        "x86_64_v3+aes",
-        "x86_64_v3+aes",
-    };
+/// Resolve a target from a triple string.
+/// Returns null for native FreeBSD (avoiding -target flag, since zig can't
+/// resolve its own libc on FreeBSD with explicit -target).
+fn resolve_target(b: *std.Build, target_requested: ?[]const u8) !?std.Build.ResolvedTarget {
+    if (target_requested) |t| {
+        const triples = .{
+            "aarch64-freebsd",
+            "aarch64-linux",
+            "aarch64-macos",
+            "x86_64-freebsd",
+            "x86_64-linux",
+            "x86_64-macos",
+            "x86_64-windows",
+        };
+        const cpus = .{
+            "baseline+aes+neon",
+            "baseline+aes+neon",
+            "baseline+aes+neon",
+            "x86_64_v3+aes",
+            "x86_64_v3+aes",
+            "x86_64_v3+aes",
+            "x86_64_v3+aes",
+        };
 
-    const arch_os, const cpu = inline for (triples, cpus) |triple, cpu| {
-        if (std.mem.eql(u8, target, triple)) break .{ triple, cpu };
+        const arch_os, const cpu = inline for (triples, cpus) |triple, cpu| {
+            if (std.mem.eql(u8, t, triple)) break .{ triple, cpu };
+        } else {
+            std.log.err("unsupported target: '{s}'", .{t});
+            return error.UnsupportedTarget;
+        };
+        const query = try Query.parse(.{
+            .arch_os_abi = arch_os,
+            .cpu_features = cpu,
+        });
+        return b.resolveTargetQuery(query);
+    } else if (builtin.target.os.tag == .freebsd) {
+        return null;
     } else {
-        std.log.err("unsupported target: '{s}'", .{target});
-        return error.UnsupportedTarget;
-    };
-    const query = try Query.parse(.{
-        .arch_os_abi = arch_os,
-        .cpu_features = cpu,
-    });
-    return b.resolveTargetQuery(query);
+        const host = @tagName(builtin.target.cpu.arch) ++ "-" ++ @tagName(builtin.target.os.tag);
+        return b.resolveTargetQuery(try Query.parse(.{ .arch_os_abi = host }));
+    }
 }
 
 const zig_version_min = std.SemanticVersion{
@@ -670,7 +678,7 @@ fn build_check(
     options: struct {
         stdx_module: *std.Build.Module,
         vsr_module: *std.Build.Module,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
     },
 ) void {
@@ -698,7 +706,7 @@ fn build_tigerbeetle(
         vsr_module: *std.Build.Module,
         vsr_options: *std.Build.Step.Options,
         llvm_objcopy: ?[]const u8,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         multiversion: ?[]const u8,
         multiversion_file: ?[]const u8,
@@ -739,7 +747,7 @@ fn build_tigerbeetle(
         break :bin tigerbeetle_exe.getEmittedBin();
     };
 
-    const out_filename = if (options.target.result.os.tag == .windows)
+    const out_filename = if ((options.target orelse b.graph.host).result.os.tag == .windows)
         "tigerbeetle.exe"
     else
         "tigerbeetle";
@@ -760,7 +768,7 @@ fn build_tigerbeetle(
 fn build_tigerbeetle_executable(b: *std.Build, options: struct {
     vsr_module: *std.Build.Module,
     vsr_options: *std.Build.Step.Options,
-    target: std.Build.ResolvedTarget,
+    target: ?std.Build.ResolvedTarget,
     mode: std.builtin.OptimizeMode,
 }) *std.Build.Step.Compile {
     const root_module = b.createModule(.{
@@ -786,7 +794,7 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
     vsr_options: *std.Build.Step.Options,
     llvm_objcopy: ?[]const u8,
     tigerbeetle_previous: ?std.Build.LazyPath,
-    target: std.Build.ResolvedTarget,
+    target: ?std.Build.ResolvedTarget,
     mode: std.builtin.OptimizeMode,
 }) std.Build.LazyPath {
     // build_multiversion a custom step that would take care of packing several releases into one
@@ -809,7 +817,7 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
     } else {
         build_multiversion.addPrefixedFileArg("--llvm-objcopy=", fetch_objcopy(b));
     }
-    if (options.target.result.os.tag == .macos) {
+    if ((options.target orelse b.graph.host).result.os.tag == .macos) {
         build_multiversion.addArg("--target=macos");
         inline for (.{ "x86_64", "aarch64" }, .{ "x86-64", "aarch64" }) |arch, flag| {
             build_multiversion.addPrefixedFileArg(
@@ -824,8 +832,8 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
         }
     } else {
         build_multiversion.addArg(b.fmt("--target={s}-{s}", .{
-            @tagName(options.target.result.cpu.arch),
-            @tagName(options.target.result.os.tag),
+            @tagName((options.target orelse b.graph.host).result.cpu.arch),
+            @tagName((options.target orelse b.graph.host).result.os.tag),
         }));
         build_multiversion.addPrefixedFileArg(
             "--tigerbeetle-current=",
@@ -849,7 +857,7 @@ fn build_tigerbeetle_executable_multiversion(b: *std.Build, options: struct {
         "--tmp={s}",
         .{b.cache_root.join(b.allocator, &.{"tmp"}) catch @panic("OOM")},
     ));
-    const basename = if (options.target.result.os.tag == .windows)
+    const basename = if ((options.target orelse b.graph.host).result.os.tag == .windows)
         "tigerbeetle.exe"
     else
         "tigerbeetle";
@@ -862,7 +870,7 @@ fn build_aof(
     options: struct {
         stdx_module: *std.Build.Module,
         vsr_options: *std.Build.Step.Options,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
     },
 ) void {
@@ -895,7 +903,7 @@ fn build_test(
         llvm_objcopy: ?[]const u8,
         stdx_module: *std.Build.Module,
         tb_client_header: std.Build.LazyPath,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         vsr_module_test: *std.Build.Module,
         vsr_options_test: *std.Build.Step.Options,
@@ -980,7 +988,7 @@ fn build_test_integration(
         tb_client_header: std.Build.LazyPath,
         llvm_objcopy: ?[]const u8,
         stdx_module: *std.Build.Module,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         vsr_module_test: *std.Build.Module,
         vsr_options_test: *std.Build.Step.Options,
@@ -1029,7 +1037,7 @@ fn build_test_jni(
     b: *std.Build,
     step_test_jni: *std.Build.Step,
     options: struct {
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
     },
 ) !void {
@@ -1107,7 +1115,7 @@ fn build_vopr(
     options: struct {
         stdx_module: *std.Build.Module,
         vsr_options_test: *std.Build.Step.Options,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         print_exe: bool,
         vopr_state_machine: VoprStateMachine,
@@ -1150,7 +1158,7 @@ fn build_fuzz(
     options: struct {
         stdx_module: *std.Build.Module,
         vsr_options_test: *std.Build.Step.Options,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         print_exe: bool,
     },
@@ -1183,7 +1191,7 @@ fn build_scripts(
     options: struct {
         stdx_module: *std.Build.Module,
         vsr_options: *std.Build.Step.Options,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
     },
 ) *std.Build.Step.Compile {
     const scripts_exe = b.addExecutable(.{
@@ -1215,7 +1223,7 @@ fn build_vortex(
         vortex_run: *std.Build.Step,
     },
     options: struct {
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         stdx_module: *std.Build.Module,
         vsr_module_test: *std.Build.Module,
@@ -1244,7 +1252,7 @@ fn build_vortex(
 fn build_vortex_executable(
     b: *std.Build,
     options: struct {
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         stdx_module: *std.Build.Module,
         vsr_module_test: *std.Build.Module,
@@ -1270,7 +1278,7 @@ fn build_vortex_executable(
 fn build_vortex_options(
     b: *std.Build,
     options: struct {
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         tigerbeetle_test: std.Build.LazyPath,
         tigerbeetle_next_test: std.Build.LazyPath,
@@ -1290,7 +1298,7 @@ fn build_vortex_options(
     server_exes[1] = options.tigerbeetle_test;
     driver_exes[1] = options.vortex_driver_zig;
 
-    if (options.target.result.os.tag == .linux) {
+    if ((options.target orelse b.graph.host).result.os.tag == .linux) {
         var tags_iterator = release_history(b);
         for (server_exes[2..], driver_exes[2..]) |*server, *driver| {
             const tag = tags_iterator.next().?;
@@ -1304,7 +1312,7 @@ fn build_vortex_options(
     // the previous release (skipping past our phony 65535.0.1 release).
     const release_offset, const release_count = blk: {
         // Currently we only publish drivers built for Linux.
-        if (options.target.result.os.tag == .linux) {
+        if ((options.target orelse b.graph.host).result.os.tag == .linux) {
             break :blk switch (options.mode) {
                 .ReleaseSafe => .{ @as(u32, 0), @as(u32, 3) },
                 .Debug => .{ 1, 2 },
@@ -1364,7 +1372,7 @@ fn build_vortex_driver_zig(
         stdx_module: *std.Build.Module,
         vsr_module: *std.Build.Module,
         vsr_options: *std.Build.Step.Options,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
         print_exe: bool,
     },
@@ -1383,7 +1391,7 @@ fn build_vortex_driver_zig(
     tb_client.bundle_compiler_rt = true;
     tb_client.root_module.addImport("vsr", options.vsr_module);
     tb_client.root_module.addOptions("vsr_options", options.vsr_options);
-    if (options.target.result.os.tag == .windows) {
+    if ((options.target orelse b.graph.host).result.os.tag == .windows) {
         tb_client.linkSystemLibrary("ws2_32");
         tb_client.linkSystemLibrary("advapi32");
     }
@@ -2065,7 +2073,7 @@ fn build_clients_c_sample(
     options: struct {
         vsr_module: *std.Build.Module,
         vsr_options: *std.Build.Step.Options,
-        target: std.Build.ResolvedTarget,
+        target: ?std.Build.ResolvedTarget,
         mode: std.builtin.OptimizeMode,
     },
 ) void {
@@ -2098,7 +2106,7 @@ fn build_clients_c_sample(
     sample.linkLibrary(static_lib);
     sample.linkLibC();
 
-    if (options.target.result.os.tag == .windows) {
+    if ((options.target orelse b.graph.host).result.os.tag == .windows) {
         static_lib.linkSystemLibrary("ws2_32");
         static_lib.linkSystemLibrary("advapi32");
 
@@ -2413,23 +2421,24 @@ fn fetch(b: *std.Build, options: struct {
 fn fetch_release(
     b: *std.Build,
     version_or_latest: []const u8,
-    target: std.Build.ResolvedTarget,
+    target: ?std.Build.ResolvedTarget,
     mode: std.builtin.OptimizeMode,
 ) std.Build.LazyPath {
+    const target_resolved = target orelse b.graph.host;
     const release_slug = if (std.mem.eql(u8, version_or_latest, "latest"))
         "latest/download"
     else
         b.fmt("download/{s}", .{version_or_latest});
 
-    const arch = if (target.result.os.tag == .macos)
+    const arch = if (target_resolved.result.os.tag == .macos)
         "universal"
-    else switch (target.result.cpu.arch) {
+    else switch (target_resolved.result.cpu.arch) {
         .x86_64 => "x86_64",
         .aarch64 => "aarch64",
         else => @panic("unsupported CPU"),
     };
 
-    const os = switch (target.result.os.tag) {
+    const os = switch (target_resolved.result.os.tag) {
         .windows => "windows",
         .linux, .freebsd => "linux",
         .macos => "macos",
@@ -2450,7 +2459,7 @@ fn fetch_release(
 
     return fetch(b, .{
         .url = url,
-        .file_name = if (target.result.os.tag == .windows) "tigerbeetle.exe" else "tigerbeetle",
+        .file_name = if (target_resolved.result.os.tag == .windows) "tigerbeetle.exe" else "tigerbeetle",
         .hash = null,
     });
 }
@@ -2458,13 +2467,14 @@ fn fetch_release(
 fn fetch_vortex_driver_zig(
     b: *std.Build,
     version: []const u8,
-    target: std.Build.ResolvedTarget,
+    target: ?std.Build.ResolvedTarget,
     mode: std.builtin.OptimizeMode,
 ) std.Build.LazyPath {
-    assert(target.result.os.tag == .linux);
+    const target_resolved = target orelse b.graph.host;
+    assert(target_resolved.result.os.tag == .linux);
     _ = mode;
 
-    const arch = switch (target.result.cpu.arch) {
+    const arch = switch (target_resolved.result.cpu.arch) {
         .x86_64 => "x86_64",
         .aarch64 => "aarch64",
         else => @panic("unsupported CPU"),
