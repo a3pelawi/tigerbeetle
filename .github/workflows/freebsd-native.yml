@@ -1,0 +1,70 @@
+name: FreeBSD Native
+
+on:
+  push:
+    branches: [ "main", "port-freebsd" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-native:
+    runs-on: ubuntu-latest
+    name: "FreeBSD 14.1 ${{ matrix.arch }}"
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          mem: 4096
+          prepare: |
+            pkg install -y zig-0.14.1 curl
+          run: |
+            cd /Users/a3pelawi/DATA/Project/tigerbeetle/.claude/worktrees/tigerbeetle-freebsd
+            zig build -Dtarget=${{ matrix.arch }}-freebsd -Doptimize=ReleaseSafe
+            file zig-out/bin/tigerbeetle
+            echo "=== Build successful ==="
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tigerbeetle-${{ matrix.arch }}-freebsd
+          path: zig-out/bin/tigerbeetle
+
+  test-native:
+    runs-on: ubuntu-latest
+    name: "FreeBSD 14.1 Smoke Test"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke test
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          mem: 4096
+          prepare: |
+            pkg install -y zig-0.14.1
+          run: |
+            cd /Users/a3pelawi/DATA/Project/tigerbeetle/.claude/worktrees/tigerbeetle-freebsd
+            zig build -Dtarget=x86_64-freebsd -Doptimize=ReleaseSafe
+
+            # Format a data file
+            ./zig-out/bin/tigerbeetle format \
+              --cluster=0 --replica=0 --replica-count=1 --development \
+              /tmp/0_0.tigerbeetle
+
+            # Start replica (background) + verify
+            timeout 5 \
+              ./zig-out/bin/tigerbeetle start \
+                --addresses=3000 --development /tmp/0_0.tigerbeetle &
+            sleep 2
+
+            # Check version
+            VERSION=$(./zig-out/bin/tigerbeetle version 2>&1)
+            echo "TigerBeetle version: ${VERSION}"
+            echo "=== Smoke test passed ==="

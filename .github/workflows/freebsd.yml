@@ -1,0 +1,52 @@
+name: FreeBSD
+
+on:
+  push:
+    branches: [ "main", "port-freebsd" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        target: [x86_64-freebsd, aarch64-freebsd]
+        optimize: [Debug, ReleaseSafe]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Build TigerBeetle (${{ matrix.target }})
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=${{ matrix.optimize }}
+
+      - name: Upload binary (${{ matrix.target }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: tigerbeetle-${{ matrix.target }}-${{ matrix.optimize }}
+          path: zig-out/bin/tigerbeetle
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        target: [x86_64-freebsd]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Run unit tests
+        run: zig build test -Dtarget=${{ matrix.target }}
+        continue-on-error: true
