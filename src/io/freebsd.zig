@@ -166,7 +166,10 @@ pub const IO = struct {
                 .write => |op| [2]c_int{ op.fd, posix.system.EVFILT.WRITE },
                 .recv => |op| [2]c_int{ op.socket, posix.system.EVFILT.READ },
                 .send => |op| [2]c_int{ op.socket, posix.system.EVFILT.WRITE },
-                else => @panic("invalid completion operation queued for io"),
+                else => {
+                    log.err("invalid completion operation in io_pending: {s}", .{@tagName(completion.operation)});
+                    @panic("invalid completion operation queued for io");
+                },
             };
 
             event.* = .{
