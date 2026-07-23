@@ -17,6 +17,7 @@ const assert = std.debug.assert;
 const is_darwin = builtin.target.os.tag.isDarwin();
 const is_windows = builtin.target.os.tag == .windows;
 const is_linux = builtin.target.os.tag == .linux;
+const is_freebsd = builtin.target.os.tag == .freebsd;
 const Instant = stdx.Instant;
 
 const BenchmarkTime = @This();
@@ -35,6 +36,7 @@ pub fn benchmark_monotonic(self: *BenchmarkTime) Instant {
         if (is_windows) break :blk benchmark_monotonic_windows();
         if (is_darwin) break :blk benchmark_monotonic_darwin();
         if (is_linux) break :blk benchmark_monotonic_linux();
+        if (is_freebsd) break :blk benchmark_monotonic_freebsd();
         @compileError("unsupported OS");
     };
 
@@ -101,6 +103,14 @@ fn benchmark_monotonic_linux() u64 {
     assert(is_linux);
     const ts: posix.timespec = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch {
         @panic("CLOCK_BOOTTIME required");
+    };
+    return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+}
+
+fn benchmark_monotonic_freebsd() u64 {
+    assert(is_freebsd);
+    const ts: posix.timespec = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch {
+        @panic("CLOCK_MONOTONIC required");
     };
     return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
 }

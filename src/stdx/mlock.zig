@@ -18,7 +18,7 @@ const mlockall_error = "Unable to lock pages in memory ({s})" ++
 pub fn memory_lock_allocated(options: struct { allocated_size: usize }) MemoryLockError!void {
     switch (builtin.os.tag) {
         .linux => try memory_lock_allocated_linux(),
-        .macos => {
+        .macos, .freebsd => {
             // macOS has mlock() but not mlockall(). mlock() requires an address range which
             // would be difficult to gather for non-heap memory that is also faulted in,
             // such as the stack, globals, etc.

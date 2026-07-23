@@ -733,7 +733,7 @@ pub const MultiversionOS = struct {
 
         const target_path: [:0]const u8 = switch (builtin.target.os.tag) {
             .linux => try allocator.dupeZ(u8, multiversion_uuid),
-            .macos, .windows => blk: {
+            .freebsd, .macos, .windows => blk: {
                 const suffix = if (builtin.target.os.tag == .windows) ".exe" else "";
                 const temporary_directory = try system_temporary_directory(allocator);
                 defer allocator.free(temporary_directory);
@@ -762,8 +762,8 @@ pub const MultiversionOS = struct {
                 break :blk fd;
             },
 
-            .macos, .windows => blk: {
-                const mode = if (builtin.target.os.tag == .macos) 0o755 else 0;
+            .freebsd, .macos, .windows => blk: {
+                const mode = if (builtin.target.os.tag == .macos or builtin.target.os.tag == .freebsd) 0o755 else 0;
                 const file = std.fs.createFileAbsolute(
                     target_path,
                     .{ .read = true, .truncate = true, .mode = mode },
@@ -781,7 +781,7 @@ pub const MultiversionOS = struct {
         errdefer posix.close(target_fd);
 
         const args_envp: ArgsEnvp = switch (builtin.target.os.tag) {
-            .linux, .macos => blk: {
+            .freebsd, .linux, .macos => blk: {
                 // We can pass through our env as-is to exec. We have to manipulate the types
                 // here somewhat: they're cast in start.zig and we can't access `argc_argv_ptr`
                 // directly. process.zig does the same trick in execve().
@@ -816,7 +816,7 @@ pub const MultiversionOS = struct {
             .exe_path = exe_path,
             .exe_path_format = switch (exe_path_format) {
                 .native => switch (builtin.target.os.tag) {
-                    .linux => .elf,
+                    .freebsd, .linux => .elf,
                     .windows => .pe,
                     .macos => .macho,
                     else => comptime unreachable,
@@ -1023,7 +1023,7 @@ pub const MultiversionOS = struct {
                 .{ .ACCMODE = .RDONLY },
                 0,
             ),
-            .macos, .windows => {
+            .freebsd, .macos, .windows => {
                 const file = std.fs.openFileAbsolute(self.exe_path, .{}) catch |e|
                     std.debug.panic("error in binary_open: {}", .{e});
                 self.binary_open_callback(&self.completion, file.handle);
@@ -1409,7 +1409,7 @@ pub const MultiversionOS = struct {
                     return error.ExecveatFailed;
                 }
             },
-            .macos => {
+            .freebsd, .macos => {
                 std.posix.execveZ(self.target_path, self.args_envp.args, self.args_envp.envp) catch
                     return error.ExecveZFailed;
 
@@ -2182,7 +2182,7 @@ pub fn print_information(
 /// Caller owns returned memory.
 fn system_temporary_directory(allocator: std.mem.Allocator) ![]const u8 {
     switch (builtin.os.tag) {
-        .linux, .macos => {
+        .freebsd, .linux, .macos => {
             return std.process.getEnvVarOwned(allocator, "TMPDIR") catch allocator.dupe(u8, "/tmp");
         },
         .windows => {

@@ -91,7 +91,7 @@ pub fn build(b: *std.Build) !void {
 fn get_pandoc_bin(b: *std.Build) ?std.Build.LazyPath {
     const host = b.graph.host.result;
     const name = switch (host.os.tag) {
-        .linux => switch (host.cpu.arch) {
+        .linux, .freebsd => switch (host.cpu.arch) {
             .x86_64 => "pandoc_linux_amd64",
             else => @panic("unsupported cpu arch"),
         },
@@ -111,7 +111,7 @@ fn get_pandoc_bin(b: *std.Build) ?std.Build.LazyPath {
 fn get_vale_bin(b: *std.Build) ?std.Build.LazyPath {
     const host = b.graph.host.result;
     const name = switch (host.os.tag) {
-        .linux => switch (host.cpu.arch) {
+        .linux, .freebsd => switch (host.cpu.arch) {
             .x86_64 => "vale_linux_amd64",
             else => @panic("unsupported cpu arch"),
         },

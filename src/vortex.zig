@@ -48,6 +48,12 @@ pub fn main() !void {
         log.err("vortex is not supported for MacOS", .{});
         return error.NotSupported;
     }
+    if (builtin.os.tag == .freebsd) {
+        // Vortex is not currently supported on FreeBSD because it relies on Linux namespace
+        // APIs (unshare) and process management.
+        log.err("vortex is not supported for FreeBSD", .{});
+        return error.NotSupported;
+    }
     assert(builtin.os.tag == .linux);
 
     var gpa_allocator = std.heap.GeneralPurposeAllocator(.{}){};

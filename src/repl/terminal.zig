@@ -8,7 +8,7 @@ const builtin = @import("builtin");
 
 pub const Terminal = struct {
     const ModeStart = switch (builtin.os.tag) {
-        .linux, .macos => posix.termios,
+        .linux, .macos, .freebsd => posix.termios,
         .windows => WindowsConsoleMode,
         else => unreachable,
     };

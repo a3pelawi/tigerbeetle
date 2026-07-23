@@ -23,8 +23,10 @@ fn resolve_target(b: *std.Build, target_requested: ?[]const u8) !std.Build.Resol
     const target_host = @tagName(builtin.target.cpu.arch) ++ "-" ++ @tagName(builtin.target.os.tag);
     const target = target_requested orelse target_host;
     const triples = .{
+        "aarch64-freebsd",
         "aarch64-linux",
         "aarch64-macos",
+        "x86_64-freebsd",
         "x86_64-linux",
         "x86_64-macos",
         "x86_64-windows",
@@ -32,6 +34,8 @@ fn resolve_target(b: *std.Build, target_requested: ?[]const u8) !std.Build.Resol
     const cpus = .{
         "baseline+aes+neon",
         "baseline+aes+neon",
+        "baseline+aes+neon",
+        "x86_64_v3+aes",
         "x86_64_v3+aes",
         "x86_64_v3+aes",
         "x86_64_v3+aes",
@@ -2413,7 +2417,7 @@ fn fetch_release(
 
     const os = switch (target.result.os.tag) {
         .windows => "windows",
-        .linux => "linux",
+        .linux, .freebsd => "linux",
         .macos => "macos",
         else => @panic("unsupported OS"),
     };

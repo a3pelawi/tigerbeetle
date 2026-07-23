@@ -10,6 +10,7 @@ const assert = std.debug.assert;
 const is_darwin = builtin.target.os.tag.isDarwin();
 const is_windows = builtin.target.os.tag == .windows;
 const is_linux = builtin.target.os.tag == .linux;
+const is_freebsd = builtin.target.os.tag == .freebsd;
 const Instant = stdx.Instant;
 
 pub const TimeSim = @import("testing/time.zig").TimeSim;
@@ -71,6 +72,7 @@ pub const TimeOS = struct {
             if (is_windows) break :blk monotonic_windows();
             if (is_darwin) break :blk monotonic_darwin();
             if (is_linux) break :blk monotonic_linux();
+            if (is_freebsd) break :blk monotonic_freebsd();
             @compileError("unsupported OS");
         };
 
@@ -130,6 +132,16 @@ pub const TimeOS = struct {
         return (now * info.numer) / info.denom;
     }
 
+    fn monotonic_freebsd() u64 {
+        assert(is_freebsd);
+        // FreeBSD uses CLOCK_MONOTONIC — it includes elapsed time during system suspension.
+        // (CLOCK_MONOTONIC_COARSE is faster but lower resolution; we use CLOCK_MONOTONIC.)
+        const ts: posix.timespec = posix.clock_gettime(posix.CLOCK.MONOTONIC) catch {
+            @panic("CLOCK_MONOTONIC required");
+        };
+        return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+    }
+
     fn monotonic_linux() u64 {
         assert(is_linux);
         // The true monotonic clock on Linux is not in fact CLOCK_MONOTONIC:
@@ -148,9 +160,8 @@ pub const TimeOS = struct {
 
     fn realtime(_: *anyopaque) i64 {
         if (is_windows) return realtime_windows();
-        // macos has supported clock_gettime() since 10.12:
-        // https://opensource.apple.com/source/Libc/Libc-1158.1.2/gen/clock_gettime.3.auto.html
-        if (is_darwin or is_linux) return realtime_unix();
+        // FreeBSD and Darwin have supported clock_gettime() for a long time.
+        if (is_darwin or is_linux or is_freebsd) return realtime_unix();
         @compileError("unsupported OS");
     }
 
@@ -169,7 +180,7 @@ pub const TimeOS = struct {
     }
 
     fn realtime_unix() i64 {
-        assert(is_darwin or is_linux);
+        assert(is_darwin or is_linux or is_freebsd);
         const ts: posix.timespec = posix.clock_gettime(posix.CLOCK.REALTIME) catch unreachable;
         return @as(i64, ts.sec) * std.time.ns_per_s + ts.nsec;
     }

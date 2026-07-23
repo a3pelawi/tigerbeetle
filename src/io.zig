@@ -5,11 +5,13 @@ const os = std.os;
 const IO_Linux = @import("io/linux.zig").IO;
 const IO_Darwin = @import("io/darwin.zig").IO;
 const IO_Windows = @import("io/windows.zig").IO;
+const IO_FreeBSD = @import("io/freebsd.zig").IO;
 
 pub const IO = switch (builtin.target.os.tag) {
     .linux => IO_Linux,
     .windows => IO_Windows,
     .macos, .tvos, .watchos, .ios => IO_Darwin,
+    .freebsd => IO_FreeBSD,
     else => @compileError("IO is not supported for platform"),
 };
 

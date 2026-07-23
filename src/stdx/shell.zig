@@ -683,7 +683,7 @@ fn spawn_argv(
 pub fn git_env_setup(shell: *Shell, options: struct { use_hostname: bool }) !void {
     if (options.use_hostname) {
         if (builtin.target.os.tag != .linux) {
-            @panic("use_hostname only supported on linux");
+            @panic("use_hostname only supported on linux"); // only linux has transient hostnames in CI
         }
         var hostname_buffer: [std.posix.HOST_NAME_MAX]u8 = @splat(0);
         const hostname = try std.posix.gethostname(&hostname_buffer);

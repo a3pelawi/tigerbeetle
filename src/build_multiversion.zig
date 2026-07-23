@@ -15,12 +15,15 @@ const section_to_macho_cpu = multiversion.section_to_macho_cpu;
 const Target = union(enum) {
     const Arch = enum { x86_64, aarch64 };
 
+    freebsd: Arch,
     linux: Arch,
     windows: Arch,
     macos, // Universal binary packing both x86_64 and aarch64 versions.
 
     pub fn parse(str: []const u8) !Target {
         const targets = [_]struct { []const u8, Target }{
+            .{ "x86_64-freebsd", .{ .freebsd = .x86_64 } },
+            .{ "aarch64-freebsd", .{ .freebsd = .aarch64 } },
             .{ "x86_64-linux", .{ .linux = .x86_64 } },
             .{ "aarch64-linux", .{ .linux = .aarch64 } },
             .{ "x86_64-windows", .{ .windows = .x86_64 } },
@@ -79,7 +82,7 @@ pub fn main() !void {
     const target = try Target.parse(cli_args.target);
 
     switch (target) {
-        .windows, .linux => try build_multiversion_single_arch(shell, .{
+        .windows, .linux, .freebsd => try build_multiversion_single_arch(shell, .{
             .llvm_objcopy = cli_args.llvm_objcopy,
             .tmp_path = tmp_dir_path,
             .target = target,
@@ -146,7 +149,7 @@ fn build_multiversion_single_arch(shell: *Shell, options: struct {
         .tmp_path = options.tmp_path,
         .target = options.target,
         .arch = switch (options.target) {
-            inline .windows, .linux => |arch| arch,
+            inline .windows, .linux, .freebsd => |arch| arch,
             .macos => unreachable,
         },
         .tigerbeetle_past = options.tigerbeetle_past,
@@ -443,7 +446,7 @@ fn build_multiversion_body(shell: *Shell, options: struct {
     const parsed_offsets = switch (options.target) {
         .windows => try multiversion.parse_pe(past_binary_contents),
         .macos => try multiversion.parse_macho(past_binary_contents),
-        .linux => try multiversion.parse_elf(past_binary_contents),
+        .linux, .freebsd => try multiversion.parse_elf(past_binary_contents),
     };
     const arch_offsets = switch (options.arch) {
         .x86_64 => parsed_offsets.x86_64.?,
@@ -756,6 +759,10 @@ fn macos_universal_binary_extract(
 fn self_check_enabled(target: Target) bool {
     return switch (target) {
         .linux => |arch| builtin.target.os.tag == .linux and switch (arch) {
+            .x86_64 => builtin.target.cpu.arch == .x86_64,
+            .aarch64 => builtin.target.cpu.arch == .aarch64,
+        },
+        .freebsd => |arch| builtin.target.os.tag == .freebsd and switch (arch) {
             .x86_64 => builtin.target.cpu.arch == .x86_64,
             .aarch64 => builtin.target.cpu.arch == .aarch64,
         },
