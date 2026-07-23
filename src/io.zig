@@ -7,6 +7,20 @@ const IO_Darwin = @import("io/darwin.zig").IO;
 const IO_Windows = @import("io/windows.zig").IO;
 const IO_FreeBSD = @import("io/freebsd.zig").IO;
 
+// To use the IOR-based backend on FreeBSD (improves file I/O performance):
+//   1. Run ./scripts/setup-ior.sh to build the IOR library
+//   2. Uncomment the line below:
+//
+//       const IO_FreeBSD_IOR = @import("io/freebsd_ior.zig").IO;
+//
+//   3. Change this line:
+//
+//       .freebsd => IO_FreeBSD_IOR,
+//
+//   The IOR backend uses a thread pool + kqueue for async file operations,
+//   while the default kqueue backend uses synchronous pwrite/pread.
+const use_ior_backend = false;
+
 pub const IO = switch (builtin.target.os.tag) {
     .linux => IO_Linux,
     .windows => IO_Windows,
