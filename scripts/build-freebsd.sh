@@ -16,14 +16,21 @@ echo "    Mode:   ${MODE}"
 echo ""
 
 # Check zig version
-ZIG_VERSION=$(zig version 2>/dev/null || echo "none")
-if [ "${ZIG_VERSION}" != "0.14.1" ]; then
-    echo "!! Zig 0.14.1 required, found: ${ZIG_VERSION}"
-    echo "   Install with: pkg install zig-0.14.1"
-    echo "   Or build from source: https://ziglang.org/download/0.14.1/"
-    exit 1
-fi
-echo "✓ Zig ${ZIG_VERSION} found"
+ZIG_VER=$(zig version 2>/dev/null || echo "none")
+case "${ZIG_VER}" in
+    0.14.*|0.15.*|0.16.*) ;;
+    none)
+        echo "!! Zig not found. Install with: pkg install zig"
+        exit 1
+        ;;
+    *)
+        echo "!! Unsupported Zig version: ${ZIG_VER}"
+        echo "   Supported: 0.14.x, 0.15.x, 0.16.x"
+        echo "   Install with: pkg install zig  (for 0.16)"
+        echo "              or: pkg install zig014 (for 0.14)"
+        exit 1
+        ;;
+esac
 
 # Build
 echo ""

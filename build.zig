@@ -61,8 +61,8 @@ const zig_version_min = std.SemanticVersion{
 };
 const zig_version_max = std.SemanticVersion{
     .major = 0,
-    .minor = 14,
-    .patch = 99,
+    .minor = 17,
+    .patch = 0,
 };
 
 comptime {
