@@ -62,11 +62,11 @@ const ior = struct {
         fixed_file = 0x1,
         io_drain = 0x2,
         io_link = 0x4,
-        async = 0x8,
+        @"async" = 0x8,
     };
 
     const PollEvents = enum(c_ushort) {
-        in = 0x001,
+        @"in" = 0x001,
         out = 0x004,
         err = 0x008,
         hup = 0x010,
@@ -83,7 +83,7 @@ const ior = struct {
     const SetupFlags = enum(c_uint) {
         sqpoll = 0x1,
         iopoll = 0x2,
-        defer = 0x4,
+        @"defer" = 0x4,
     };
 
     const Features = enum(c_uint) {
@@ -96,7 +96,7 @@ const ior = struct {
     };
 
     const TimeoutFlags = enum(c_uint) {
-        abs = 0x1,
+        @"abs" = 0x1,
     };
 
     const Timespec = extern struct {
@@ -427,7 +427,6 @@ pub const IO = struct {
                 },
                 .close => |op| {
                     // Close is synchronous - complete immediately
-                    _ = op;
                     const result: CloseError!void = switch (posix.errno(posix.system.close(op.fd))) {
                         .SUCCESS => {},
                         .BADF => error.FileDescriptorInvalid,
@@ -439,7 +438,7 @@ pub const IO = struct {
                     self.completed.push(completion);
                     continue;
                 },
-                .fsync => |op| {
+                .fsync => {
                     // Fsync via IOR WORK (executed in thread pool)
                     const Wrapper = struct {
                         fn work(_: ?*anyopaque, arg: ?*anyopaque) callconv(.C) c_int {
@@ -455,7 +454,7 @@ pub const IO = struct {
                     ior.ior_prep_work(self.ctx, sqe, Wrapper.work, completion);
                     ior.ior_sqe_set_data(self.ctx, sqe, completion);
                 },
-                .openat => |op| {
+                .openat => {
                     // Openat via IOR WORK
                     const Wrapper = struct {
                         fn work(_: ?*anyopaque, arg: ?*anyopaque) callconv(.C) c_int {
@@ -726,7 +725,7 @@ pub const IO = struct {
         operation_data: std.meta.TagPayload(Operation, operation_tag),
     ) void {
         const on_complete_fn = struct {
-            fn on_complete(io: *IO, _completion: *Completion) void {
+            fn on_complete(_: *IO, _completion: *Completion) void {
                 const result = switch (operation_tag) {
                     .accept => _completion.result.accept,
                     .close => _completion.result.close,
@@ -1206,7 +1205,6 @@ pub const IO = struct {
     }
 
     fn open_socket(self: *IO, family: u32, sock_type: u32, protocol: u32) !socket_t {
-        _ = self;
         const fd = try posix.socket(
             family,
             sock_type | posix.SOCK.NONBLOCK,

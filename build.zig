@@ -17,6 +17,10 @@ const VoprLog = enum { short, full };
 // NB: grep for 'TODO(client_release)' after changing!
 const release_client_min = "0.16.4";
 
+// Set from -Dfreebsd-ior build option. Links the IOR library for async
+// I/O on FreeBSD (requires: sh scripts/setup-ior.sh).
+var freebsd_ior: bool = false;
+
 // TigerBeetle binary requires certain CPU feature and supports a closed set of CPUs. Here, we
 // specify exactly which features the binary needs.
 /// Resolve a target from a triple string.
@@ -124,6 +128,9 @@ pub fn build(b: *std.Build) !void {
     };
 
     const mode = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
+
+    freebsd_ior = b.option(bool, "freebsd-ior",
+        "Use IOR backend on FreeBSD (run scripts/setup-ior.sh first)") orelse false;
 
     // Build options passed with `-D` flags.
     const build_options = .{
@@ -786,6 +793,10 @@ fn build_tigerbeetle_executable(b: *std.Build, options: struct {
         .name = "tigerbeetle",
         .root_module = root_module,
     });
+
+    if (target_resolved.result.os.tag == .freebsd and freebsd_ior) {
+        tigerbeetle.linkSystemLibrary("ior");
+    }
 
     return tigerbeetle;
 }
