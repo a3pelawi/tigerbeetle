@@ -2521,6 +2521,12 @@ fn fetch_objcopy(b: *std.Build) std.Build.LazyPath {
                 .hash = "N-V-__8AAFAsVgArdRpU50gjJhqaAUSXsTemKo2A9rCaewUV",
             });
         },
+        .freebsd => {
+            // FreeBSD ships llvm-objcopy in base system (since FreeBSD 12+).
+            const objcopy_path = b.findProgram(&.{"llvm-objcopy"}, &.{}) catch
+                @panic("install llvm-objcopy: pkg install llvm");
+            return b.path(objcopy_path);
+        },
         else => @panic("unsupported host"),
     }
 }
