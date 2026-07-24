@@ -610,6 +610,7 @@ pub const IO = struct {
                     const now = self.time.monotonic().ns;
                     if (now >= completion.operation.timeout.expires) {
                         self.timeouts.remove(completion);
+                        completion.result = .{ .timeout = {} };
                         self.completed.push(completion);
                     } else {
                         const timeout_ns = completion.operation.timeout.expires - now;
