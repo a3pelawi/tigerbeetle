@@ -339,22 +339,37 @@ pub const IO = struct {
                 log.err("ior_submit failed: {}", .{rc});
                 return error.SystemResources;
             }
-            self.io_inflight += submitted;
         }
 
-        // 3. Collect completions via peek (avoids opaque pointer arithmetic).
+        // 3. Collect completions via peek.
+        // Guard against null user_data (IOR internal CQEs) and stale
+        // completions (whose operation tag doesn't match a submitted SQE).
+        //
+        // In the IOR backend, io_inflight is not tracked per-CQE because
+        // IOR handles its own queue depth; stale CQEs from previous
+        // batches may reference completions already processed inline.
         while (true) {
             var cqe: *ior.Cqe = undefined;
             const rc = ior.ior_peek_cqe(self.ctx, &cqe);
             if (rc != 0) break;
 
-            const completion: *Completion = @ptrCast(@alignCast(
-                ior.ior_cqe_get_data(self.ctx, cqe).?,
-            ));
+            const data = ior.ior_cqe_get_data(self.ctx, cqe) orelse {
+                ior.ior_cqe_seen(self.ctx, cqe);
+                continue;
+            };
+            const completion: *Completion = @ptrCast(@alignCast(data));
             const res = ior.ior_cqe_get_res(self.ctx, cqe);
             ior.ior_cqe_seen(self.ctx, cqe);
-            self.commit_completion(completion, res);
-            self.io_inflight -= 1;
+
+            // Only process completions for operations actually submitted
+            // through IOR. Other tags (next_tick, close, inline-handled)
+            // are stale or already processed — skip them entirely.
+            switch (completion.operation) {
+                .read, .write, .recv, .send, .timeout,
+                .accept, .connect, .fsync, .openat,
+                => self.commit_completion(completion, res),
+                else => {},
+            }
         }
 
         // 4. Drain completion callbacks
