@@ -600,6 +600,9 @@ pub const IO = struct {
         var min_timeout: ?u64 = null;
         var it = self.timeouts.iterate();
         while (it.next()) |completion| {
+            // Safety guard: skip completions that aren't actually timeout ops.
+            // (Can happen with IOR backend's dual-path completion handling.)
+            if (completion.operation != .timeout) continue;
             const now = self.time.monotonic().ns;
             const expires = completion.operation.timeout.expires;
             if (now >= expires) {
