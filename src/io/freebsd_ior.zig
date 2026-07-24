@@ -441,7 +441,7 @@ pub const IO = struct {
                                 switch (posix.errno(rc)) {
                                     .SUCCESS => return @as(c_int, @intCast(rc)),
                                     .INTR => continue,
-                                    .FAULT, .INVAL, .BADF => return @as(c_int, -@intFromEnum(posix.E.INVAL)),
+                                    .FAULT, .INVAL, .BADF => return -@as(c_int, @intCast(@intFromEnum(posix.E.INVAL))),
                                     else => |e| return -@as(c_int, @intCast(@intFromEnum(e))),
                                 }
                             }
@@ -554,16 +554,16 @@ pub const IO = struct {
                 const result: ReadError!usize = if (res >= 0)
                     @intCast(res)
                 else switch (res) {
-                    -@intFromEnum(posix.E.AGAIN),
-                    -@intFromEnum(posix.E.INTR),
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.AGAIN))),
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.INTR))),
                     => error.WouldBlock,
-                    -@intFromEnum(posix.E.BADF) => error.NotOpenForReading,
-                    -@intFromEnum(posix.E.CONNRESET) => error.ConnectionResetByPeer,
-                    -@intFromEnum(posix.E.INVAL) => error.Alignment,
-                    -@intFromEnum(posix.E.IO) => error.InputOutput,
-                    -@intFromEnum(posix.E.ISDIR) => error.IsDir,
-                    -@intFromEnum(posix.E.NOMEM) => error.SystemResources,
-                    -@intFromEnum(posix.E.SPIPE) => error.Unseekable,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.BADF))) => error.NotOpenForReading,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.CONNRESET))) => error.ConnectionResetByPeer,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.INVAL))) => error.Alignment,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.IO))) => error.InputOutput,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.ISDIR))) => error.IsDir,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.NOMEM))) => error.SystemResources,
+                    -@as(c_int, @intCast(@intFromEnum(posix.E.SPIPE))) => error.Unseekable,
                     else => error.SystemResources,
                 };
                 completion.result = .{ .read = result };
