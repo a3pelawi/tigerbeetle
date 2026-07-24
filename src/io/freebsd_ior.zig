@@ -597,24 +597,30 @@ pub const IO = struct {
     }
 
     fn flush_timeouts(self: *IO) void {
+        // Timeouts in the IOR backend are handled through IOR's own timeout
+        // mechanism (ior_prep_timeout + CQE completion). The userspace
+        // timeout queue (self.timeouts) should not be used, but we drain it
+        // safely regardless. Use a switch on the tagged union so that Zig's
+        // safety checks guarantee we never access inactive union fields.
         var min_timeout: ?u64 = null;
         var it = self.timeouts.iterate();
         while (it.next()) |completion| {
-            // Safety guard: skip completions that aren't actually timeout ops.
-            // (Can happen with IOR backend's dual-path completion handling.)
-            if (completion.operation != .timeout) continue;
-            const now = self.time.monotonic().ns;
-            const expires = completion.operation.timeout.expires;
-            if (now >= expires) {
-                self.timeouts.remove(completion);
-                self.completed.push(completion);
-                continue;
-            }
-            const timeout_ns = expires - now;
-            if (min_timeout) |min_ns| {
-                min_timeout = @min(min_ns, timeout_ns);
-            } else {
-                min_timeout = timeout_ns;
+            switch (completion.operation) {
+                .timeout => {
+                    const now = self.time.monotonic().ns;
+                    if (now >= completion.operation.timeout.expires) {
+                        self.timeouts.remove(completion);
+                        self.completed.push(completion);
+                    } else {
+                        const timeout_ns = completion.operation.timeout.expires - now;
+                        if (min_timeout) |min_ns| {
+                            min_timeout = @min(min_ns, timeout_ns);
+                        } else {
+                            min_timeout = timeout_ns;
+                        }
+                    }
+                },
+                else => continue,
             }
         }
     }
