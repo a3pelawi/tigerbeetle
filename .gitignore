@@ -13,5 +13,8 @@ tools/
 
 # Death to .DS_Store
 .DS_Store
+
+# ERP architecture design — project internal, not for upstream
+docs/erp-architecture-design.md
 zig/
 zig/
